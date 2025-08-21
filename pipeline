@@ -1,0 +1,60 @@
+{
+  "clientId": "bbfb47b5-e83a-47e9-96f1-d143891ad53f",
+  "clientSecret": ".Ti8Q~NFCt0rLv7hcik7x2MgKUwzSudbhep~Da_O",
+  "subscriptionId": "76062082-5acf-4993-8c75-269e3e0e0c55",
+  "tenantId": "76e4ac64-f84d-401d-8594-3f6ca5374437"
+}
+
+ name: Terraform Apply
+run-name: Terraform Apply - ${{ github.ref_name }}
+on:
+  workflow_dispatch:
+  push:
+    branches: [ dev, qa, uat, main ]
+    paths-ignore:
+      - '.github/**'
+      - 'README.md'
+ 
+jobs:
+  terraform_apply:
+    name: Terraform apply
+    runs-on: ubuntu-latest
+    env:
+      ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.HUB_ARM_SUBSCRIPTION_ID }}
+      ARM_CLIENT_ID: ${{ vars.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+ 
+      TF_VAR_tenant_id: ${{ vars.ARM_TENANT_ID }}
+      TF_VAR_client_id: ${{ vars.ARM_CLIENT_ID }}
+      TF_VAR_client_secret: ${{ secrets.ARM_CLIENT_SECRET }}
+      TF_VAR_environment: ${{ github.ref == 'refs/heads/main' && 'prod' || github.ref == 'refs/heads/dev' && 'dev' || github.ref == 'refs/heads/qa' && 'test' || github.ref == 'refs/heads/uat' && 'uat' }}
+      TF_VAR_subscription_id: ${{ github.ref == 'refs/heads/main' && vars.PROD_ARM_SUBSCRIPTION_ID || github.ref == 'refs/heads/dev' && vars.DEV_ARM_SUBSCRIPTION_ID || github.ref == 'refs/heads/qa' && vars.TEST_ARM_SUBSCRIPTION_ID || github.ref == 'refs/heads/uat' && vars.UAT_ARM_SUBSCRIPTION_ID }}
+ 
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+ 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ~1.5.0
+ 
+      - name: Terraform fmt
+        id: fmt
+        run: terraform fmt -check
+        continue-on-error: true
+ 
+      - name: Terraform Init
+        run: terraform init -backend-config=backend_${{ env.TF_VAR_environment }}.hcl
+ 
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -out=tfplan -var-file="variables_${{ env.TF_VAR_environment }}.tfvars"
+ 
+      - name: Terraform Apply
+        id: apply
+        run: terraform apply tfplan
+        env:
+          TF_CLI_AUTO_APPROVE: 1
+#          TF_LOG: DEBUG
